@@ -1,0 +1,14 @@
+---
+nfs_exports: []
+#  - path: /srv/nfs4/
+#    allow: 192.168.86.0/24
+#    options: rw,sync,no_subtree_check,no_root_squash,anonuid=1001,anongid=1004,fsid=root
+nfs_mounts: []
+#  - name: dirname
+#    server: hostname
+#    path: /serverpath
+nfs_mount_base_path: /mnt
+nfs_nobody_user: nobody
+nfs_nobody_group: nobody
+nfs_manage_ufw: false
+nfs_idmapd_verbosity: 0

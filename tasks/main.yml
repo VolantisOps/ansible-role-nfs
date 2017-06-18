@@ -1,0 +1,96 @@
+---
+- name: Allow port 111
+  ufw:
+    rule: allow
+    port: 111
+    proto: any
+  when: nfs_manage_ufw
+
+- name: Allow port 2049
+  ufw:
+    rule: allow
+    port: 2049
+    proto: any
+  when: nfs_manage_ufw
+
+- name: Install nfs packages
+  action: "pacman name={{item}} state=installed"
+  with_items:
+    - nfs-utils
+    - autofs
+
+- name: Ensure nfs mount directories exist
+  file: "path={{ nfs_mount_base_path }}/{{ item.name }} state=directory"
+  with_items: "{{ nfs_mounts }}"
+
+- name: Mount nfs shares
+  mount:
+    path: "{{ nfs_mount_base_path }}/{{ item.server }}"
+    src: "{{ item.server }}:{{ item.path }}"
+    fstype: nfs4
+    opts: noauto,x-systemd.automount,x-systemd.idle-timeout=60min
+    state: mounted
+  with_items: "{{ nfs_mounts }}"
+
+- name: Ensure directories to export exist
+  file: 'path="{{ item.path }}" state=directory'
+  with_items: "{{ nfs_exports }}"
+  notify: run exportfs
+
+- name: Mount bind nfs export directories
+  mount:
+    src: "{{ item.link }}"
+    path: "{{ item.path }}"
+    fstype: none
+    opts: bind
+    state: mounted
+  when: item.link is defined
+  with_items: "{{ nfs_exports }}"
+  notify: run exportfs
+
+- name: Copy exports file.
+  template:
+    src: exports.j2
+    dest: /etc/exports
+    owner: root
+    group: root
+    mode: 0644
+  register: nfs_exports_copy
+  notify: run exportfs
+
+- name: Restart NFS immediately if exports are updated
+  service: "name=nfs-server state=restarted"
+  when: nfs_exports_copy.changed
+
+- name: Ensure nfs is running
+  service: "name=nfs-server state=started enabled=yes"
+  when: nfs_exports|length
+
+- name: Ensure nfs-client target is running
+  service: name=nfs-client.target state=started enabled=yes
+
+- name: return value of nfs4_disable_idmapping
+  command: cat /sys/module/nfs/parameters/nfs4_disable_idmapping
+  changed_when: "nfs4_disable_idmapping == 'Y'"
+  register: nfs4_disable_idmapping
+
+- name: Change value of nfs4_disable_idmapping to N
+  command: echo N > /sys/module/nfs/parameters/nfs4_disable_idmapping
+  when: nfs4_disable_idmapping == 'Y'
+  notify: clear idmap keyring
+
+- name: Copy modprobe config for nfs
+  template:
+    src: nfs.conf.j2
+    dest: /etc/modprobe.d/nfs.conf
+    owner: root
+    group: root
+  notify: clear idmap keyring
+
+- name: Copy idmapd.conf config file
+  template:
+    src: idmapd.conf.j2
+    dest: /etc/idmapd.conf
+    owner: root
+    group: root
+  notify: clear idmap keyring

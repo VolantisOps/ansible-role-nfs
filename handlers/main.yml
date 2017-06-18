@@ -1,0 +1,16 @@
+---
+- name: run exportfs
+  command: exportfs -rav
+  when: nfs_exports|length
+  notify: restart nfs
+
+- name: restart nfs
+  service: "name=nfs-server state=restarted"
+  when: nfs_exports|length
+
+- name: restart nfs-idmapd
+  service: name=nfs-idmapd.service state=restarted
+
+- name: clear idmap keyring
+  command: nfsidmap -c
+  notify: restart nfs-idmapd
